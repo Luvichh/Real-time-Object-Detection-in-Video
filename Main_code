@@ -1,0 +1,99 @@
+import cv2
+import numpy as np
+from ultralytics import YOLO
+from IPython.display import display, clear_output
+import ipywidgets as widgets
+import time
+import os
+
+def process_video(input_path, output_path, model):
+    cap = cv2.VideoCapture(input_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    color_map = {}
+    progress = widgets.FloatProgress(value=0, min=0, max=frame_count, description='Processing:')
+    display(progress)
+
+    frame_number = 0
+    while cap.isOpened():
+        frame_number += 1
+        progress.value = frame_number
+        
+        success, frame = cap.read()
+        if not success:
+            break
+        
+        results = model(frame, conf=0.3, iou=0.5)
+        
+        for r in results:
+            boxes = r.boxes
+            for box in boxes:
+                b = box.xyxy[0].cpu().numpy()
+                cls = int(box.cls)
+                cls_name = model.names[cls]
+                
+                if cls not in color_map:
+                    color_map[cls] = tuple(np.random.randint(0, 255, 3).tolist())
+                color = color_map[cls]
+                
+                cv2.rectangle(frame, (int(b[0]), int(b[1])), (int(b[2]), int(b[3])), color, 2)
+                cv2.putText(frame, cls_name, (int(b[0]), int(b[1])-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+        
+        out.write(frame)
+
+    cap.release()
+    out.release()
+    print("Video processing completed.")
+
+def play_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    video_widget = widgets.Image(format='jpg')
+    display(video_widget)
+    
+    progress = widgets.FloatProgress(value=0, min=0, max=frame_count, description='Playback:')
+    display(progress)
+
+    frame_number = 0
+    start_time = time.time()
+
+    while cap.isOpened():
+        frame_number += 1
+        progress.value = frame_number
+        
+        success, frame = cap.read()
+        if not success:
+            break
+        
+        _, buffer = cv2.imencode('.jpg', frame)
+        video_widget.value = buffer.tobytes()
+        
+        elapsed_time = time.time() - start_time
+        desired_frame_time = frame_number / fps
+        if elapsed_time < desired_frame_time:
+            time.sleep(desired_frame_time - elapsed_time)
+
+    cap.release()
+    print("Video playback completed.")
+
+# Load the YOLO model
+model = YOLO('yolov8x.pt')
+
+# Define input and output paths
+input_path = r"C:\Users\Victor Dzramado\Downloads\Video\y2mate.com - Cars Busy Streets City Traffic  No Copyright Royalty Free Stock Videos_1080.mp4"
+output_path = r"C:\Users\Victor Dzramado\Downloads\Video\processed_traffic_video.mp4"
+
+# Process and save the video
+process_video(input_path, output_path, model)
+
+# Play the processed video
+play_video(output_path)
+
